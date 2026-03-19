@@ -12,15 +12,16 @@ import androidx.core.app.NotificationCompat
 class MyForegroundService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private var isLogging = false
     private var logCount = 0
     private var firstStart = true
-
+    private var state = State.IDLE
+    enum class State {
+        IDLE, RUNNING, CONFIRM
+    }
     private lateinit var controlReceiver: BroadcastReceiver
-
     private val logRunnable = object : Runnable {
         override fun run() {
-            if (isLogging) {
+            if (state == State.RUNNING) {
                 logCount++
                 Log.d("VCS_LOG", "Log lần $logCount")
                 updateNotification()
@@ -33,23 +34,14 @@ class MyForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        val manager = getSystemService(NotificationManager::class.java)
 
         controlReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     "ACTION_START" -> handleStart()
                     "ACTION_STOP" -> stopLogging()
-                    "ACTION_CONFIRM_RESET" -> {
-                        manager.cancel(2)
-                        logCount = 0
-                        startLogging()
-                    }
-
-                    "ACTION_CONTINUE" -> {
-                        manager.cancel(2)
-                        startLogging()
-                    }
+                    "ACTION_CONFIRM_RESET" -> resetLogging()
+                    "ACTION_CONTINUE" -> startLogging()
                 }
             }
         }
@@ -78,80 +70,72 @@ class MyForegroundService : Service() {
             firstStart = false
             startLogging()
         } else {
-            showConfirmNotification()
-        }
-    }
-    private fun startLogging() {
-        if (!isLogging) {
-            isLogging = true
-            vibrate()
-            handler.post(logRunnable)
+            state = State.CONFIRM
             updateNotification()
         }
     }
+    private fun resetLogging() {
+        logCount = 0
+        startLogging()
+    }
+    private fun startLogging() {
+        state = State.RUNNING
+        vibrate()
+        handler.post(logRunnable)
+        updateNotification()
+    }
     private fun stopLogging() {
-        isLogging = false
+        state = State.IDLE
         handler.removeCallbacks(logRunnable)
         updateNotification()
     }
-
-
     private fun buildNotification(): Notification {
-        val startIntent = Intent("ACTION_START").apply {
-            setPackage(packageName)
-        }
-
-        val stopIntent = Intent("ACTION_STOP").apply {
-            setPackage(packageName)
-        }
-
-        val startPI = PendingIntent.getBroadcast(this, 0, startIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
-        val stopPI = PendingIntent.getBroadcast(this, 1, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val startPI = getPI("ACTION_START", 0)
+        val stopPI = getPI("ACTION_STOP", 1)
+        val resetPI = getPI("ACTION_CONFIRM_RESET", 2)
+        val continuePI = getPI("ACTION_CONTINUE", 3)
 
         val builder = NotificationCompat.Builder(this, "channel_1")
             .setContentTitle("VCS Project 4")
+            .setSmallIcon(getIcon())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
 
-        if (isLogging) {
-            builder.setSmallIcon(R.drawable.ic_play)
-                .setContentText("Đang chạy • $logCount logs")
-                .addAction(android.R.drawable.ic_media_pause, "Stop", stopPI)
-        } else {
-            builder.setSmallIcon(R.drawable.ic_pause)
-                .setContentText("Đã dừng • $logCount logs")
-                .addAction(android.R.drawable.ic_media_play, "Start", startPI)
-        }
+        when (state) {
+            State.IDLE -> {
+                builder.setContentText("Đã dừng • $logCount logs")
+                    .addAction(R.drawable.ic_play, "Start", startPI)
+            }
 
+            State.RUNNING -> {
+                builder.setContentText("Đang chạy • $logCount logs")
+                    .addAction(R.drawable.ic_pause, "Stop", stopPI)
+            }
+
+            State.CONFIRM -> {
+                builder.setContentTitle("Restart log?")
+                    .setContentText("Reset hay tiếp tục?")
+                    .addAction(android.R.drawable.ic_menu_delete, "Reset", resetPI)
+                    .addAction(android.R.drawable.ic_media_play, "Continue", continuePI)
+            }
+        }
         return builder.build()
     }
-    private fun showConfirmNotification() {
 
-        val resetIntent = Intent("ACTION_CONFIRM_RESET").setPackage(packageName)
-        val continueIntent = Intent("ACTION_CONTINUE").setPackage(packageName)
-
-        val resetPI = PendingIntent.getBroadcast(this, 2, resetIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
-        val continuePI = PendingIntent.getBroadcast(this, 3, continueIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
-        val notification = NotificationCompat.Builder(this, "channel_1")
-            .setContentTitle("Restart log?")
-            .setContentText("Reset hay tiếp tục?")
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .addAction(android.R.drawable.ic_menu_delete, "Reset", resetPI)
-            .addAction(android.R.drawable.ic_media_play, "Continue", continuePI)
-            .setAutoCancel(true)
-            .build()
-
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(2, notification)
+    private fun getIcon(): Int {
+        return when (state) {
+            State.RUNNING -> android.R.drawable.ic_media_pause
+            State.IDLE -> android.R.drawable.ic_media_play
+            State.CONFIRM -> android.R.drawable.ic_dialog_alert
+        }
     }
-
+    private fun getPI(action: String, requestCode: Int): PendingIntent {
+        val intent = Intent(action).setPackage(packageName)
+        return PendingIntent.getBroadcast(
+            this, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
     private fun updateNotification() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(1, buildNotification())
@@ -166,8 +150,6 @@ class MyForegroundService : Service() {
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(channel)
     }
-
-
     @RequiresPermission(Manifest.permission.VIBRATE)
     private fun vibrate() {
         val vibrator = getSystemService(Vibrator::class.java)
