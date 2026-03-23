@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">VCS_project4</string>
+    <string name="app_running">App đang chạy nền</string>
+    <string name="instruction">Vuốt xuống thanh thông báo để điều khiển</string>
 </resources>

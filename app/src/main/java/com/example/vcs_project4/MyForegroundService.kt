@@ -10,7 +10,6 @@ import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 
 class MyForegroundService : Service() {
-
     private val handler = Handler(Looper.getMainLooper())
     private var logCount = 0
     private var firstStart = true
@@ -18,8 +17,14 @@ class MyForegroundService : Service() {
     enum class State {
         IDLE, RUNNING, CONFIRM
     }
+    companion object {
+        const val ACTION_START = "ACTION_START"
+        const val ACTION_STOP = "ACTION_STOP"
+        const val ACTION_RESET = "ACTION_CONFIRM_RESET"
+        const val ACTION_CONTINUE = "ACTION_CONTINUE"
+    }
     private lateinit var controlReceiver: BroadcastReceiver
-    private val logRunnable = object : Runnable {
+    private val logRun = object : Runnable {
         override fun run() {
             if (state == State.RUNNING) {
                 logCount++
@@ -38,19 +43,19 @@ class MyForegroundService : Service() {
         controlReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
-                    "ACTION_START" -> handleStart()
-                    "ACTION_STOP" -> stopLogging()
-                    "ACTION_CONFIRM_RESET" -> resetLogging()
-                    "ACTION_CONTINUE" -> startLogging()
+                    ACTION_START-> handleStart()
+                    ACTION_STOP -> stopLogging()
+                    ACTION_RESET -> resetLogging()
+                    ACTION_CONTINUE -> startLogging()
                 }
             }
         }
 
         val filter = IntentFilter().apply {
-            addAction("ACTION_START")
-            addAction("ACTION_STOP")
-            addAction("ACTION_CONFIRM_RESET")
-            addAction("ACTION_CONTINUE")
+            addAction(ACTION_START)
+            addAction(ACTION_STOP)
+            addAction(ACTION_RESET)
+            addAction(ACTION_CONTINUE)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -64,7 +69,6 @@ class MyForegroundService : Service() {
         startForeground(1, buildNotification())
         return START_NOT_STICKY
     }
-
     private fun handleStart() {
         if (firstStart) {
             firstStart = false
@@ -72,28 +76,39 @@ class MyForegroundService : Service() {
         } else {
             state = State.CONFIRM
             updateNotification()
+            handler.removeCallbacks(confirmTimeout)
+            handler.postDelayed(confirmTimeout, 7000)
+        }
+    }
+    private val confirmTimeout = Runnable {
+        if (state == State.CONFIRM) {
+            state = State.IDLE
+            updateNotification()
         }
     }
     private fun resetLogging() {
+        handler.removeCallbacks(confirmTimeout)
         logCount = 0
         startLogging()
     }
     private fun startLogging() {
         state = State.RUNNING
         vibrate()
-        handler.post(logRunnable)
+        handler.removeCallbacks(logRun)
+        handler.post(logRun)
         updateNotification()
     }
     private fun stopLogging() {
+        handler.removeCallbacks(confirmTimeout)
         state = State.IDLE
-        handler.removeCallbacks(logRunnable)
+        handler.removeCallbacks(logRun)
         updateNotification()
     }
     private fun buildNotification(): Notification {
-        val startPI = getPI("ACTION_START", 0)
-        val stopPI = getPI("ACTION_STOP", 1)
-        val resetPI = getPI("ACTION_CONFIRM_RESET", 2)
-        val continuePI = getPI("ACTION_CONTINUE", 3)
+        val startPI = getPI(ACTION_START, 0)
+        val stopPI = getPI(ACTION_STOP, 1)
+        val resetPI = getPI(ACTION_RESET, 2)
+        val continuePI = getPI(ACTION_CONTINUE, 3)
 
         val builder = NotificationCompat.Builder(this, "channel_1")
             .setContentTitle("VCS Project 4")
@@ -158,7 +173,7 @@ class MyForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        handler.removeCallbacks(logRunnable)
+        handler.removeCallbacks(logRun)
         unregisterReceiver(controlReceiver)
     }
 

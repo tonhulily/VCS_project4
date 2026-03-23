@@ -11,7 +11,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="VCS Project 4"
+        android:text="@string/app_name"
         android:textSize="28sp"
         android:textStyle="bold"
         android:textColor="#FFFFFF"
@@ -21,7 +21,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="App đang chạy nền"
+        android:text="@string/app_running"
         android:textSize="18sp"
         android:textColor="#FFECEC"
         android:layout_marginBottom="8dp"/>
@@ -29,7 +29,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Vuốt xuống thanh thông báo để điều khiển"
+        android:text="@string/instruction"
         android:textSize="16sp"
         android:textColor="#FFECEC"
         android:gravity="center"/>
